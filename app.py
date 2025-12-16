@@ -4,7 +4,6 @@ import os
 
 app = Flask(__name__)
 
-# Your Tasklet webhook URL (set as environment variable)
 TASKLET_WEBHOOK_URL = os.environ.get('TASKLET_WEBHOOK_URL')
 
 @app.route('/slack/events', methods=['POST'])
@@ -19,21 +18,34 @@ def slack_events():
     if data.get('type') == 'event_callback':
         event = data.get('event', {})
 
-        # Only process DM messages (not from bots)
+        # Handle DM messages
         if event.get('type') == 'message' and event.get('channel_type') == 'im':
-            # Skip bot messages and message edits
             if 'bot_id' not in event and 'subtype' not in event:
-                # Forward to Tasklet webhook
                 try:
                     requests.post(TASKLET_WEBHOOK_URL, json={
                         'event_type': 'slack_dm',
                         'user': event.get('user'),
                         'text': event.get('text'),
                         'channel': event.get('channel'),
-                        'ts': event.get('ts')
+                        'ts': event.get('ts'),
+                        'thread_ts': event.get('thread_ts')
                     }, timeout=5)
                 except Exception as e:
                     print(f'Error forwarding to Tasklet: {e}')
+
+        # Handle @mentions in channels/threads
+        elif event.get('type') == 'app_mention':
+            try:
+                requests.post(TASKLET_WEBHOOK_URL, json={
+                    'event_type': 'slack_mention',
+                    'user': event.get('user'),
+                    'text': event.get('text'),
+                    'channel': event.get('channel'),
+                    'ts': event.get('ts'),
+                    'thread_ts': event.get('thread_ts')
+                }, timeout=5)
+            except Exception as e:
+                print(f'Error forwarding to Tasklet: {e}')
 
     return jsonify({'ok': True})
 
